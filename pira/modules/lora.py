@@ -7,6 +7,9 @@ import struct
 import time
 import pigpio
 import RPi.GPIO as gpio
+import sqlite3
+import json
+import requests
 
 from ..hardware import devices, lora
 from ..const import MEASUREMENT_DEVICE_VOLTAGE, MEASUREMENT_DEVICE_TEMPERATURE
@@ -14,6 +17,7 @@ from ..messages import create_measurements_message
 
 # Persistent state.
 STATE_FRAME_COUNTER = 'lora.frame_counter'
+IMSI_FILE = '/home/pi/hack-the-poacher/data/imsi-catcher.db'
 
 
 class LoRa(lora.LoRa):
@@ -28,6 +32,8 @@ class Module(object):
         self._lora = None
         self._last_update = datetime.datetime.now()
         self._frame_counter = boot.state[STATE_FRAME_COUNTER] or 1
+        self._db = sqlite3.connect(IMSI_FILE)
+        self._db_cursor = None
 
         # Parse configuration.
         try:
@@ -36,7 +42,7 @@ class Module(object):
             self._apps_key = self._decode_hex('LORA_APPS_KEY', length=16)
             self._spread_factor = int(os.environ.get('LORA_SPREAD_FACTOR', '7'))
             self._enabled = True
-            self._initialize_lora_module()
+            # self._initialize_lora_module()
         except:
             self._enabled = False
 
@@ -77,60 +83,110 @@ class Module(object):
             print("WARNING: LoRa is not correctly initialized, skipping.")
             return
 
+    def _get_new_catches(self):
+        cursor = None
+        if self._db_cursor:
+            cursor = self._db.execute("SELECT * FROM observations WHERE stamp > ?", (self._db_cursor, ))
+        else:
+            cursor = self._db.execute("SELECT * FROM observations")
+        result = cursor.fetchall()
+
+        if result:
+            self._db_cursor = result[-1][0]
+        
+        return result
+
+    def _slack_msg(self, msg):
+        url = os.environ.get('SLACK_URL', None)
+        if not url:
+            print("Skip send Slack message, Slack URL not set")
+            return
+
+        payload = {
+            'channel': '#hack-the-poacher',
+            'username': 'IMSI Catcher',
+            'text': msg,
+            'icon_emoji': ':sleuth_or_spy:'
+        }
+
+        try:
+            requests.post(url, data={'payload': json.dumps(payload)})
+        except:
+            print("Something went wrong while sending message to Slack")
+
+    def _slack_catches(self, catches):
+        msg = []
+        for catch in catches:
+            tmsi1 = catch[1]
+            tmsi2 = catch[2]
+            imsi = catch[3]
+            imsicountry = catch[4]
+            imsibrand = catch[5]
+            imsioperator = catch[6]
+            msg.append("Discovered IMSI %s, TMSI1 %s, TMSI2 %s, country %s, brand %s, operator %s" % (imsi, tmsi1, tmsi2, imsicountry, imsibrand, imsioperator))
+        self._slack_msg('.'.join(msg))
+
     def process(self, modules):
         if not self._enabled:
             print("WARNING: LoRa is not correctly configured, skipping.")
             return
 
-        #Initialize lora modue if needed
-        if not self._lora:
-            self._initialize_lora_module()
-
-        # Transmit message.
-        measurements = [
-            MEASUREMENT_DEVICE_TEMPERATURE,
-            MEASUREMENT_DEVICE_VOLTAGE,
-        ]
-
-        if 'pira.modules.ultrasonic' in modules:
-            from .ultrasonic import MEASUREMENT_ULTRASONIC_DISTANCE
-            measurements.append(MEASUREMENT_ULTRASONIC_DISTANCE)
-
-        message = create_measurements_message(self._boot, self._last_update, measurements)
-        if not message:
+        catches = self._get_new_catches()
+        if not catches:
+            self._slack_msg("No new TMSIs/IMSIs found")
             return
 
-        print("Transmitting message ({} bytes) via LoRa...".format(len(message)))
+        self._slack_catches(catches)
 
-        payload = lora.LoRaWANPayload(self._nws_key, self._apps_key)
-        payload.create(
-            lora.MHDR.UNCONF_DATA_UP,
-            {
-                'devaddr': self._device_addr,
-                'fcnt': self._frame_counter % 2**16,
-                'data': list([ord(x) for x in message]),
-            }
-        )
+        # #Initialize lora modue if needed
+        # if not self._lora:
+        #     self._initialize_lora_module()
 
-        self._lora.write_payload(payload.to_raw())
-        self._lora.set_mode(lora.MODE.TX)
+        # # Transmit message.
+        # measurements = [
+        #     MEASUREMENT_DEVICE_TEMPERATURE,
+        #     MEASUREMENT_DEVICE_VOLTAGE,
+        # ]
 
-        # Wait for transmission to finish.
-        tx_wait_start = datetime.datetime.now()
-        while (datetime.datetime.now() - tx_wait_start) < datetime.timedelta(seconds=30):
-            if self._lora.get_irq_flags()['tx_done']:
-                break
+        # if 'pira.modules.ultrasonic' in modules:
+        #     from .ultrasonic import MEASUREMENT_ULTRASONIC_DISTANCE
+        #     measurements.append(MEASUREMENT_ULTRASONIC_DISTANCE)
 
-            time.sleep(0.1)
-        else:
-            print("WARNING: Timeout while transmitting LoRa message.")
+        # message = create_measurements_message(self._boot, self._last_update, measurements)
+        # if not message:
+        #     return
 
-        self._lora.set_mode(lora.MODE.STDBY)
-        self._lora.clear_irq_flags(TxDone=1)
+        # print("Transmitting message ({} bytes) via LoRa...".format(len(message)))
 
-        self._last_update = datetime.datetime.now()
-        self._frame_counter += 1
-        self._boot.state[STATE_FRAME_COUNTER] = self._frame_counter % 2**16
+        # payload = lora.LoRaWANPayload(self._nws_key, self._apps_key)
+        # payload.create(
+        #     lora.MHDR.UNCONF_DATA_UP,
+        #     {
+        #         'devaddr': self._device_addr,
+        #         'fcnt': self._frame_counter % 2**16,
+        #         'data': list([ord(x) for x in message]),
+        #     }
+        # )
+
+        # self._lora.write_payload(payload.to_raw())
+        # self._lora.set_mode(lora.MODE.TX)
+
+        # # Wait for transmission to finish.
+        # tx_wait_start = datetime.datetime.now()
+        # while (datetime.datetime.now() - tx_wait_start) < datetime.timedelta(seconds=30):
+        #     if self._lora.get_irq_flags()['tx_done']:
+        #         break
+
+        #     time.sleep(0.1)
+        # else:
+        #     print("WARNING: Timeout while transmitting LoRa message.")
+
+        # self._lora.set_mode(lora.MODE.STDBY)
+        # self._lora.clear_irq_flags(TxDone=1)
+
+        # self._last_update = datetime.datetime.now()
+        # self._frame_counter += 1
+        # self._boot.state[STATE_FRAME_COUNTER] = self._frame_counter % 2**16
 
     def shutdown(self, modules):
         pass
