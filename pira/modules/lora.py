@@ -87,9 +87,9 @@ class Module(object):
     def _get_new_catches(self):
         cursor = None
         if self._db_cursor:
-            cursor = self._db.execute("SELECT * FROM observations WHERE julianday(stamp) > julianday(?) ORDER BY datetime(stamp) ASC", (str(self._db_cursor),))
+            cursor = self._db.execute("SELECT * FROM observations WHERE julianday(stamp) > julianday(?) ORDER BY julianday(stamp) ASC", (str(self._db_cursor),))
         else:
-            cursor = self._db.execute("SELECT * FROM observations ORDER BY datetime(stamp) ASC")
+            cursor = self._db.execute("SELECT * FROM observations ORDER BY julianday(stamp) ASC")
         result = cursor.fetchall()
 
         if result:
@@ -98,6 +98,8 @@ class Module(object):
         return result
 
     def _slack_msg(self, msg):
+        msg = unicode(msg).encode("iso-8859-2", "replace") # Fix issues with weird characters
+
         url = os.environ.get('SLACK_URL', None)
         if not url:
             print("Skip send Slack message, Slack URL not set")
@@ -113,7 +115,7 @@ class Module(object):
         try:
             requests.post(url, data={'payload': json.dumps(payload)})
         except:
-            print("Something went wrong while sending message to Slack")
+            print("Something went wrong while sending message %s to Slack" % (msg,))
 
     def _slack_catches(self, catches):
         catch_msgs = []
@@ -127,7 +129,7 @@ class Module(object):
             if imsi:
                 catch_msgs.append("- IMSI %s, country %s, brand %s, operator %s" % (imsi, imsicountry, imsibrand, imsioperator))
             elif tmsi1 and tmsi2:
-                catch_msgs.append("- TMSI-1 %s, TMSI-2 %ss" % (tmsi1, tmsi2))
+                catch_msgs.append("- TMSI-1 %s, TMSI-2 %s" % (tmsi1, tmsi2))
             else:
                 catch_msgs.append("- TMSI-1 %s" % (tmsi1,))
 
