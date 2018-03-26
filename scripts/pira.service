@@ -1,6 +1,6 @@
 [Unit]
 Description=pira
-After=pigpiod.service
+After=pigpiod.service hack-the-poacher.service
 
 [Service]
 Environment=PYTHONUNBUFFERED=1
