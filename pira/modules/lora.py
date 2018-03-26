@@ -34,6 +34,7 @@ class Module(object):
         self._frame_counter = boot.state[STATE_FRAME_COUNTER] or 1
         self._db = sqlite3.connect(IMSI_FILE)
         self._db_cursor = None
+        self._htp_device_id = os.environ.get('DEVICE_ID', 'Unknown')
 
         # Parse configuration.
         try:
@@ -104,7 +105,7 @@ class Module(object):
 
         payload = {
             'channel': '#hack-the-poacher',
-            'username': 'IMSI Catcher',
+            'username': 'HTP %s' % (self._htp_device_id,),
             'text': msg,
             'icon_emoji': ':sleuth_or_spy:'
         }
