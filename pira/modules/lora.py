@@ -87,9 +87,9 @@ class Module(object):
     def _get_new_catches(self):
         cursor = None
         if self._db_cursor:
-            cursor = self._db.execute("SELECT * FROM observations WHERE stamp > ?", (self._db_cursor, ))
+            cursor = self._db.execute("SELECT * FROM observations WHERE julianday(stamp) > julianday(?) ORDER BY datetime(stamp) ASC", (str(self._db_cursor),))
         else:
-            cursor = self._db.execute("SELECT * FROM observations")
+            cursor = self._db.execute("SELECT * FROM observations ORDER BY datetime(stamp) ASC")
         result = cursor.fetchall()
 
         if result:
