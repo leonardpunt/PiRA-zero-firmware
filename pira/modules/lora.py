@@ -116,7 +116,7 @@ class Module(object):
             print("Something went wrong while sending message to Slack")
 
     def _slack_catches(self, catches):
-        msg = []
+        catch_msgs = []
         for catch in catches:
             tmsi1 = catch[1]
             tmsi2 = catch[2]
@@ -124,8 +124,15 @@ class Module(object):
             imsicountry = catch[4]
             imsibrand = catch[5]
             imsioperator = catch[6]
-            msg.append("Discovered IMSI %s, TMSI1 %s, TMSI2 %s, country %s, brand %s, operator %s" % (imsi, tmsi1, tmsi2, imsicountry, imsibrand, imsioperator))
-        self._slack_msg('.'.join(msg))
+            if imsi:
+                catch_msgs.append("- IMSI %s, country %s, brand %s, operator %s" % (imsi, imsicountry, imsibrand, imsioperator))
+            elif tmsi1 and tmsi2:
+                catch_msgs.append("- TMSI-1 %s, TMSI-2 %ss" % (tmsi1, tmsi2))
+            else:
+                catch_msgs.append("- TMSI-1 %s" % (tmsi1,))
+
+        msg = "Discovered:\n%s" % (".\n".join(catch_msgs,))
+        self._slack_msg(msg)
 
     def process(self, modules):
         if not self._enabled:
