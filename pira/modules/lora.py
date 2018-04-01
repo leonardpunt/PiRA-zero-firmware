@@ -213,8 +213,10 @@ class Module(object):
             print("Something went wrong while sending message %s to Slack" % (msg,))
     
     def _send_shutting_down(self):
-        self._transmit_lora_msg(self._create_lora_message(Messages.ShuttingDown))
-        self._slack_msg("Shutting down")
+        voltage_data = get_measurement_data(self._boot, self._last_update, MEASUREMENT_DEVICE_VOLTAGE)
+        voltage = voltage_data.average if voltage_data else None
+        self._transmit_lora_msg(self._create_lora_message(Messages.ShuttingDown, voltage))
+        self._slack_msg("Shutting down. Voltage: %s" % (voltage,))
 
     def _create_lora_message(self, msg_type, data=None):
         raw_msg = io.BytesIO()
