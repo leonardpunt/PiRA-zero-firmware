@@ -35,6 +35,7 @@ class Module(object):
         self._db = sqlite3.connect(IMSI_FILE)
         self._db_cursor = None
         self._htp_device_id = os.environ.get('DEVICE_ID', 'Unknown')
+        self._slack_msg("Starting up")
 
         # Parse configuration.
         try:
@@ -199,4 +200,4 @@ class Module(object):
         # self._boot.state[STATE_FRAME_COUNTER] = self._frame_counter % 2**16
 
     def shutdown(self, modules):
-        pass
+        self._slack_msg("Shutting down")
