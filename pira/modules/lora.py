@@ -101,9 +101,14 @@ class Module(object):
     def _slack_msg(self, msg):
         msg = unicode(msg).encode("iso-8859-2", "replace") # Fix issues with weird characters
 
+        enabled = os.environ.get('SLACK_DEBUGGING_ENABLED', '1') == '1' # Enables debugging by default
+        if not enabled:
+            print("Skip sending Slack message, Slack debugging not enabled")
+            return
+
         url = os.environ.get('SLACK_URL', None)
         if not url:
-            print("Skip send Slack message, Slack URL not set")
+            print("Skip sending Slack message, Slack URL not set")
             return
 
         payload = {
