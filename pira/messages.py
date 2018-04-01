@@ -4,7 +4,18 @@ import struct
 
 # Measurement conversion configuration.
 MeasurementConfig = collections.namedtuple('MeasurementConfig', ['log_type', 'conversion'])
+MeasurementData = collections.namedtuple('MeasurementData', ['count', 'average', 'min_value', 'max_value'])
 
+
+def get_measurement_data(boot, timestamp, measurement):
+    values = boot.log.query(timestamp, measurement.log_type, only_numeric=True)
+    converter = measurement.conversion or int
+
+    # Compute statistics.
+    if values:
+        return MeasurementData(len(values), converter(sum(values) / len(values)), converter(min(values)), converter(max(values)))
+    else:
+        return
 
 def create_measurements_message(boot, timestamp, measurements):
     """Create measurements report message.
@@ -26,23 +37,10 @@ def create_measurements_message(boot, timestamp, measurements):
     have_measurements = False
     message = io.BytesIO()
     for config in measurements:
-        values = boot.log.query(timestamp, config.log_type, only_numeric=True)
-        converter = config.conversion or int
-
         # Compute statistics.
-        if values:
-            count = len(values)
-            average = converter(sum(values) / count)
-            min_value = converter(min(values))
-            max_value = converter(max(values))
-            have_measurements = True
-        else:
-            count = 0
-            average = 0
-            min_value = 0
-            max_value = 0
+        data = get_measurement_data(boot, timestamp, config)
 
-        message.write(struct.pack('!HHHH', count, average, min_value, max_value))
+        message.write(struct.pack('!HHHH', data.count, data.average, data.min_value, data.max_value))
 
     if not have_measurements:
         return
